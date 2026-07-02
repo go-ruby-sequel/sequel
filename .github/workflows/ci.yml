@@ -11,11 +11,11 @@ permissions:
 
 # Track the latest stable Go (org convention). go.mod floor is 1.26.4.
 jobs:
-  # Build, vet, race-test, and enforce 100% coverage. The differential-vs-Ruby
-  # oracle tests skip themselves on Windows and where ruby is absent; ruby is
-  # installed on the ubuntu/macos lanes so the MRI oracle runs there. The
-  # deterministic, ruby-free tests alone keep coverage at 100% so the no-ruby
-  # lanes still pass the gate.
+  # Build, vet, race-test, and enforce 100% coverage. The differential-vs-gem
+  # oracle tests skip themselves on Windows and where ruby / the sequel gem is
+  # absent; ruby + `sequel` are installed on the ubuntu/macos lanes so the gem
+  # oracle runs there. The deterministic, ruby-free golden vectors alone keep
+  # coverage at 100% so the no-ruby lanes still pass the gate.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -32,6 +32,8 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
+      - if: runner.os != 'Windows'
+        run: gem install sequel --no-document
       - run: go version
       - run: go vet ./...
       - run: go build ./...
@@ -48,7 +50,7 @@ jobs:
 
   # Validate the library on the six supported 64-bit targets. amd64/arm64 run
   # natively; the rest run the suite under qemu-user. The oracle tests skip under
-  # qemu (no target-arch ruby), so this checks the emitter / loader themselves.
+  # qemu (no target-arch ruby), so this checks the SQL generator itself.
   arch-native:
     name: arch ${{ matrix.label }}
     runs-on: ${{ matrix.os }}

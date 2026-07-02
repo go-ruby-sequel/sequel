@@ -276,14 +276,11 @@ func (d *Dataset) Reverse() *Dataset {
 }
 
 func reverseTerm(e Expr) Expr {
-	switch x := e.(type) {
-	case orderNoAscKeyword:
+	if x, ok := e.(orderNoAscKeyword); ok {
 		return orderNoAscKeyword{OrderedExpr{Expr: x.o.Expr, Descending: !x.o.Descending}}
-	case OrderedExpr:
-		return OrderedExpr{Expr: x.Expr, Descending: !x.Descending}
-	default:
-		return orderNoAscKeyword{OrderedExpr{Expr: e, Descending: true}}
 	}
+	// A bare (unordered) column defaults to ascending, so its reverse is DESC.
+	return orderNoAscKeyword{OrderedExpr{Expr: e, Descending: true}}
 }
 
 // Limit sets a LIMIT (and, when offset is non-nil, an OFFSET).

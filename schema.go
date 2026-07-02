@@ -349,7 +349,9 @@ type AlterBuilder struct {
 	ops   []alterOp
 }
 
-type alterOp interface{ sql(db *Database, table string) string }
+type alterOp interface {
+	sql(db *Database, table string) string
+}
 
 // AddColumn adds an ADD COLUMN operation.
 func (a *AlterBuilder) AddColumn(c Column) *AlterBuilder {

@@ -136,24 +136,6 @@ func Asc(v Value) OrderedExpr { return OrderedExpr{Expr: coerceColumn(v)} }
 // Desc marks a column/expression descending in ORDER BY.
 func Desc(v Value) OrderedExpr { return OrderedExpr{Expr: coerceColumn(v), Descending: true} }
 
-func (o OrderedExpr) litSQL(b *builder) {
-	o.Expr.litSQL(b)
-	if o.Descending {
-		b.WriteString(" DESC")
-	} else {
-		b.WriteString(" ASC")
-	}
-}
-
-// reversed flips the direction of an ORDER BY term (Dataset#reverse). A bare
-// column defaults to ascending, so its reverse is descending.
-func reversed(e Expr) Expr {
-	if o, ok := e.(OrderedExpr); ok {
-		return OrderedExpr{Expr: o.Expr, Descending: !o.Descending}
-	}
-	return OrderedExpr{Expr: e, Descending: true}
-}
-
 // ---- Functions ----------------------------------------------------------
 
 // FunctionCall is a SQL function invocation — Sequel.function(:name, args...).
@@ -523,8 +505,6 @@ func (p parenExpr) litSQL(b *builder) {
 // boolean filter (Sequel.lit semantics); any other Expr is used as-is.
 func condOf(v Value) Expr {
 	switch x := v.(type) {
-	case parenExpr:
-		return x
 	case LiteralString:
 		return parenExpr{x}
 	case Expr:

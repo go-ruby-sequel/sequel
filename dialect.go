@@ -55,9 +55,6 @@ func DialectByName(name string) Dialect {
 	}
 }
 
-// quotesIdentifiers reports whether the dialect quotes identifiers by default.
-func (d Dialect) quotesIdentifiers() bool { return d != Default }
-
 // quoteIdentifier quotes a single identifier component per the dialect,
 // doubling the closing quote inside. The Default dialect leaves it bare.
 func (d Dialect) quoteIdentifier(s string) string {
@@ -78,25 +75,21 @@ func (d Dialect) literalString(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
-// literalBool literalizes a boolean per the dialect.
+// literalBool literalizes a bare boolean value for the quoting dialects. SQLite
+// stores booleans as the 't'/'f' character; Postgres uses the true/false
+// keywords. (The Default dialect renders bare booleans via boolWord and never
+// reaches here.)
 func (d Dialect) literalBool(b bool) string {
-	switch d {
-	case SQLite:
+	if d == SQLite {
 		if b {
 			return "'t'"
 		}
 		return "'f'"
-	case Postgres:
-		if b {
-			return "true"
-		}
-		return "false"
-	default:
-		if b {
-			return "IS TRUE"
-		}
-		return "IS FALSE"
 	}
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 // boolIsInfix reports whether `col = <bool>` renders with an IS-style infix
@@ -158,26 +151,18 @@ func hexLower(b []byte) string {
 }
 
 // literalFloat formats a float64 the way Ruby's Float#to_s does, which is what
-// Sequel emits. Ruby always shows a decimal point ("1.0", not "1") and uses a
-// signed two-plus-digit exponent ("1.0e+20", "1.0e-07").
+// Sequel emits. Ruby always shows a decimal point ("1.0", not "1") and a signed
+// exponent with at least two digits ("1.0e+20", "1.0e-07"). Go's %g exponent is
+// already signed and at least two digits, so only the mantissa needs a decimal
+// point added.
 func literalFloat(f float64) string {
 	s := strconv.FormatFloat(f, 'g', -1, 64)
-	if i := strings.IndexAny(s, "eE"); i >= 0 {
+	if i := strings.IndexByte(s, 'e'); i >= 0 {
 		mant, exp := s[:i], s[i+1:]
 		if !strings.Contains(mant, ".") {
 			mant += ".0"
 		}
-		sign := "+"
-		if exp[0] == '+' || exp[0] == '-' {
-			if exp[0] == '-' {
-				sign = "-"
-			}
-			exp = exp[1:]
-		}
-		if len(exp) < 2 {
-			exp = strings.Repeat("0", 2-len(exp)) + exp
-		}
-		return mant + "e" + sign + exp
+		return mant + "e" + exp
 	}
 	if !strings.Contains(s, ".") {
 		s += ".0"
