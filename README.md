@@ -28,8 +28,8 @@ and [go-ruby-erb](https://github.com/go-ruby-erb/erb) (the ERB compiler).
 > (`Execute(sql) → rows`) the host wires to a driver such as
 > [go-ruby-sqlite3](https://github.com/go-ruby-sqlite3/sqlite3) or
 > [go-ruby-pg](https://github.com/go-ruby-pg/pg). The SQL *text* is what this
-> library generates and tests; execution is the seam. (A `Model` layer is
-> **deferred** — see below.)
+> library generates and tests; execution is the seam. The `Model`
+> (active-record) layer sits on this seam — see below.
 
 ## Features
 
@@ -62,6 +62,16 @@ Faithful port of Sequel's SQL generation, validated byte-for-byte against the
 - **Adapter seam** — `Executor` / `ExecutorFunc`, wired by the host; SQL runs
   through it or, executor-less, is collected for inspection (mirrors the gem's
   mock `#sqls`).
+- **Model (active-record) layer** — `Sequel::Model` over a table/dataset:
+  instance CRUD (`Create`/`Save`/`Update`/`Delete`/`Destroy`/`Refresh`),
+  dataset-backed finders (`Get`/`WithPK`/`First`/`All`/`Where`/`Order`/`Limit`),
+  the four core associations (`OneToMany`/`ManyToOne`/`OneToOne`/`ManyToMany`)
+  with lazy accessors, `Add`/`Remove` modifiers, and both eager strategies
+  (`Eager` batch `IN (…)` + `EagerGraph` `LEFT OUTER JOIN`), validations
+  (`ValidatesPresence`/`ValidatesUnique`/`ValidatesFormat`/`ValidatesLength`,
+  `Valid` + `Errors`), before/after hooks (create/update/save/destroy/
+  validation), dirty tracking (`ChangedColumns`/`Modified`), and named dataset
+  methods (`DatasetModule`/`Def`).
 
 CGO-free, dependency-free, **100% test coverage**, `gofmt` + `go vet` clean, and
 green across the six 64-bit Go targets (amd64, arm64, riscv64, loong64, ppc64le,
@@ -136,10 +146,47 @@ type Executor interface {
 db := sequel.Connect("sqlite", myDriver) // rows, _ := db.All(db.T("items"))
 ```
 
-A full `Model` (active-record) layer is **deferred**: it is thin glue over this
-dataset/schema core plus the executor seam, and belongs with the host that owns
-object instantiation. This module delivers the deterministic SQL generation it
-would sit on.
+An `Executor` may additionally implement `KeyExecutor`
+(`ExecuteInsert(sql) → key`) so a Model insert recovers an auto-increment
+primary key, mirroring a Sequel adapter's `#insert` returning the last id.
+
+### Model (active-record) layer
+
+`Sequel::Model` is available directly on the seam above — the class builds the
+same SQL the gem's Model builds and maps the executor's rows into instances:
+
+```go
+db := sequel.Connect("sqlite", myDriver)
+Artist := db.Model("artists").SetColumns("id", "name")
+Album := db.Model("albums").SetColumns("id", "name", "artist_id")
+Artist.OneToMany("albums", Album, sequel.Key("artist_id"))
+Album.ManyToOne("artist", Artist, sequel.Key("artist_id"))
+Artist.ValidatesPresence("name")
+
+a, _ := Artist.Create("name", "Prince") // INSERT + refresh
+albums, _ := a.Related("albums")        // SELECT * FROM albums WHERE (albums.artist_id = …)
+loaded, _ := Artist.Where(sequel.H("name", "Prince")).Eager("albums").All()
+```
+
+Implemented: class definition over a table/dataset; instance CRUD
+(`Create`/`Save`/`Update`/`Delete`/`Destroy`/`Refresh`); finders
+(`Get`/`WithPK`/`First`/`All`/`Where`/`Order`/`Limit`); the four core
+associations with lazy accessors, `Add`/`Remove`, and eager `Eager` (batch
+`IN`) + `EagerGraph` (`LEFT OUTER JOIN`); validations
+(presence/unique/format/length) with an `Errors` object; before/after hooks
+(create/update/save/destroy/validation); dirty tracking
+(`ChangedColumns`/`Modified`); and named dataset methods (`DatasetModule`/`Def`).
+The association-dataset, finder, CRUD-statement and `validates_unique` SQL is
+pinned byte-for-byte to the gem's Model layer by the differential oracle.
+
+Not included (named, not silently dropped): plugins beyond this core —
+`single_table_inheritance`, `timestamps`, `nested_attributes`, `dirty`
+(change history beyond `changed_columns`), `serialization`, `association_pks`,
+`many_through_many`, prepared statements, sharding, and transaction wrapping of
+saves (the `Executor` seam models a single statement, so the gem's
+`BEGIN`/`COMMIT` around a save is not emitted). `EagerGraph` implements the
+`LEFT OUTER JOIN` + row-splitting behaviour, but its per-column alias *text*
+uses a plain `<assoc>_<column>` scheme rather than the gem's internal aliasing.
 
 ## Tests & coverage
 
